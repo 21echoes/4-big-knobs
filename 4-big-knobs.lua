@@ -26,6 +26,7 @@ local dials = {}
 local corner_labels = {}
 local dial_focus = 1
 local ui_refresh_metro
+local crow_input_values = {0,0}
 
   -- TODO: why does this app draw over the menu???
 
@@ -34,23 +35,48 @@ local function param_name_for_ctrl(ctrl)
 end
 
 local function compute_voltage(ctrl)
+  -- Default value
   local v = params:get(param_name_for_ctrl(ctrl))
+
+  -- Attenuate
+  for crow_input=1,#crow_input_values do
+    local input_mode = params:get("input_"..crow_input)
+    if input_mode == 2 then
+      local ratio = util.clamp((crow_input_values[crow_input] / params:get("input_"..crow_input.."_atten")), 0, 1)
+      v = v * ratio
+    end
+  end
+
+  -- Offset
+  for crow_input=1,#crow_input_values do
+    local input_mode = params:get("input_"..crow_input)
+    if input_mode == 1 then
+      v = v + crow_input_values[crow_input]
+    end
+  end
+
+  -- Min & Max
   return util.clamp(v, params:get("min_volts"), params:get("max_volts"))
 end
 
-local function ctrl_changed(ctrl)
+local function ctrl_changed(ctrl, refresh_ui)
   local voltage = compute_voltage(ctrl)
   for crow_out=1,NUM_CONTROLS do
     if params:get("output_"..crow_out) == ctrl then
       crow.output[crow_out].volts = voltage
     end
   end
-  UIState.set_dirty()
+  if refresh_ui then
+    UIState.set_dirty()
+  end
 end
 
-local function refresh_crow_outs()
+local function refresh_crow_outs(refresh_ui)
   for ctrl=1,NUM_CONTROLS do
-    ctrl_changed(ctrl)
+    ctrl_changed(ctrl, false)
+  end
+  if refresh_ui then
+    UIState.set_dirty()
   end
 end
 
@@ -59,11 +85,26 @@ local function minmax_changed()
   for ctrl=1,NUM_CONTROLS do
     arcify.params_[param_name_for_ctrl(ctrl)].controlspec = faked_controlspec
   end
-  refresh_crow_outs()
+  refresh_crow_outs(true)
+end
+
+local function init_crow_inputs()
+  for crow_input=1,#crow_input_values do
+    crow.input[crow_input].stream = function(v)
+      local changed = crow_input_values[crow_input] ~= v
+      crow_input_values[crow_input] = v
+      if changed then
+        refresh_crow_outs(false)
+      end
+    end
+    crow.input[crow_input].mode("stream", 1/25)
+  end
 end
 
 local function init_params()
-  params:add_group("Crow Outputs", 6)
+  params:add_separator()
+
+  params:add_group("Crow Outputs", 10)
   params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
   params:set_action("min_volts", function(value)
     if params:get("max_volts") < value + MIN_SEPARATION then
@@ -81,17 +122,32 @@ local function init_params()
   for ctrl=1,NUM_CONTROLS do
     params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
-      ctrl_changed(ctrl)
+      ctrl_changed(ctrl, true)
       params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
     end)
     arcify:register(param_name_for_ctrl(ctrl))
   end
   for ctrl=1,NUM_CONTROLS do
-    params:add_option("output_"..ctrl, "Output "..ctrl, {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
+    params:add_option("output_"..ctrl, "Output "..ctrl.. " mapping", {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
     params:set_action("output_"..ctrl, function()
-      refresh_crow_outs()
+      refresh_crow_outs(false)
     end)
   end
+
+  params:add_group("Crow Inputs", #crow_input_values*2)
+  for crow_in=1,#crow_input_values do
+    params:add_option("input_"..crow_in, "Input Function", {"Offset", "Attenuate", "None"}, 1)
+    params:set_action("input_"..crow_in, function()
+      refresh_crow_outs(false)
+    end)
+  end
+  for crow_in=1,#crow_input_values do
+    params:add_number("input_"..crow_in.."_atten", "Input "..crow_in.." Atten Range", 1, 10, 5)
+    params:set_action("input_"..crow_in.."_atten", function()
+      refresh_crow_outs(false)
+    end)
+  end
+
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
   params:set_action("is_shield", function(value)
@@ -102,6 +158,7 @@ local function init_params()
     corner_labels[top_right].x = 128
     corner_labels[top_right].align = Label.ALIGN_RIGHT
   end)
+  params:add_group("Arc", 4)
   arcify:add_params()
   for ctrl=1,NUM_CONTROLS do
     arcify:map_encoder_via_params(ctrl, param_name_for_ctrl(ctrl))
@@ -145,7 +202,7 @@ local function init_ui()
   dials[3] = UI.Dial.new(70, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
   dials[4] = UI.Dial.new(104, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
   corner_labels[1] = Label.new({x = 0, y = 8, text="E1: Switch Focus"})
-  corner_labels[2] = Label.new({x = 128, y = 8, text="Arc", align=Label.ALIGN_RIGHT})
+  corner_labels[2] = Label.new({x = 128, y = 8, text="Arc Found", align=Label.ALIGN_RIGHT})
   corner_labels[3] = Label.new({x = 0, y = 64, text="Dial 1  Dial 2"})
   corner_labels[4] = Label.new({x = 128, y = 64, align=Label.ALIGN_RIGHT})
 
@@ -187,6 +244,7 @@ end
 
 function init()
   init_params()
+  init_crow_inputs()
   init_ui()
   params:bang()
   UIState.set_dirty()
