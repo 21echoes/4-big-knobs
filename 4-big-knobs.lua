@@ -14,12 +14,13 @@ local ControlSpec = require "controlspec"
 local Arcify = include("lib/arcify")
 local UIState = include('lib/ui_state')
 local Label = include("lib/label")
+local tabutil = require "tabutil"
 
 local arc_device = arc.connect()
 local arcify = Arcify.new(arc_device, false)
 local NUM_CONTROLS = 4
 local MIN_VOLTS = -5
-local MAX_VOLTS = 5
+local MAX_VOLTS = 10
 local dials = {}
 local corner_labels = {}
 local dial_focus = 1
@@ -31,8 +32,7 @@ end
 
 local function compute_voltage(ctrl)
   local v = params:get(param_name_for_ctrl(ctrl))
-  -- return util.clamp(v, params:get("min_volts"), params:get("max_volts"))
-  return util.clamp(v, MIN_VOLTS, MAX_VOLTS)
+  return util.clamp(v, params:get("min_volts"), params:get("max_volts"))
 end
 
 local function ctrl_changed(ctrl)
@@ -41,20 +41,25 @@ local function ctrl_changed(ctrl)
 end
 
 local function minmax_changed()
+  local faked_controlspec = ControlSpec.new(params:get("min_volts"), params:get("max_volts"), "lin", 0.01, 0)
   for ctrl=1,NUM_CONTROLS do
+    arcify.params_[param_name_for_ctrl(ctrl)].controlspec = faked_controlspec
     ctrl_changed(ctrl)
   end
 end
 
 local function init_params()
-  params:add_group("Crow Outputs", 4)
-  -- params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, MIN_VOLTS))
-  -- params:set_action("min_volts", function() minmax_changed() end)
-  -- params:add_control("max_volts", "Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, MAX_VOLTS))
-  -- params:set_action("min_volts", function() minmax_changed() end)
+  params:add_group("Crow Outputs", 6)
+  params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, MIN_VOLTS))
+  params:set_action("min_volts", function() minmax_changed() end)
+  params:add_control("max_volts", "Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 5))
+  params:set_action("max_volts", function() minmax_changed() end)
   for ctrl=1,NUM_CONTROLS do
     params:add_control(param_name_for_ctrl(ctrl), "Output "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
-    params:set_action(param_name_for_ctrl(ctrl), function() ctrl_changed(ctrl) end)
+    params:set_action(param_name_for_ctrl(ctrl), function(value)
+      ctrl_changed(ctrl)
+      params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
+    end)
     arcify:register(param_name_for_ctrl(ctrl))
   end
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
@@ -79,8 +84,8 @@ local function redraw()
   screen.close()
   screen.clear()
   for ctrl=1,#dials do
-    -- dials[ctrl].min_value = params:get("min_volts")
-    -- dials[ctrl].max_value = params:get("max_volts")
+    dials[ctrl].min_value = params:get("min_volts")
+    dials[ctrl].max_value = params:get("max_volts")
     dials[ctrl]:set_value(params:get(param_name_for_ctrl(ctrl)))
     dials[ctrl].active = (dial_focus == 1 and ctrl < 3) or (dial_focus == 2 and ctrl >= 3)
     dials[ctrl]:redraw()
