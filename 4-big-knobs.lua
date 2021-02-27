@@ -39,16 +39,27 @@ local function compute_voltage(ctrl)
 end
 
 local function ctrl_changed(ctrl)
-  crow.output[ctrl].volts = compute_voltage(ctrl)
+  local voltage = compute_voltage(ctrl)
+  for crow_out=1,NUM_CONTROLS do
+    if params:get("output_"..crow_out) == ctrl then
+      crow.output[crow_out].volts = voltage
+    end
+  end
   UIState.set_dirty()
+end
+
+local function refresh_crow_outs()
+  for ctrl=1,NUM_CONTROLS do
+    ctrl_changed(ctrl)
+  end
 end
 
 local function minmax_changed()
   local faked_controlspec = ControlSpec.new(params:get("min_volts"), params:get("max_volts"), "lin", 0.01, 0)
   for ctrl=1,NUM_CONTROLS do
     arcify.params_[param_name_for_ctrl(ctrl)].controlspec = faked_controlspec
-    ctrl_changed(ctrl)
   end
+  refresh_crow_outs()
 end
 
 local function init_params()
@@ -68,12 +79,18 @@ local function init_params()
     minmax_changed()
   end)
   for ctrl=1,NUM_CONTROLS do
-    params:add_control(param_name_for_ctrl(ctrl), "Output "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
+    params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
       ctrl_changed(ctrl)
       params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
     end)
     arcify:register(param_name_for_ctrl(ctrl))
+  end
+  for ctrl=1,NUM_CONTROLS do
+    params:add_option("output_"..ctrl, "Output "..ctrl, {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
+    params:set_action("output_"..ctrl, function()
+      refresh_crow_outs()
+    end)
   end
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
