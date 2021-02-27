@@ -21,10 +21,13 @@ local arcify = Arcify.new(arc_device, false)
 local NUM_CONTROLS = 4
 local MIN_VOLTS = -5
 local MAX_VOLTS = 10
+local MIN_SEPARATION = 0.01
 local dials = {}
 local corner_labels = {}
 local dial_focus = 1
 local ui_refresh_metro
+
+  -- TODO: why does this app draw over the menu???
 
 local function param_name_for_ctrl(ctrl)
   return ctrl.."_volt"
@@ -50,10 +53,20 @@ end
 
 local function init_params()
   params:add_group("Crow Outputs", 6)
-  params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, MIN_VOLTS))
-  params:set_action("min_volts", function() minmax_changed() end)
-  params:add_control("max_volts", "Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 5))
-  params:set_action("max_volts", function() minmax_changed() end)
+  params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
+  params:set_action("min_volts", function(value)
+    if params:get("max_volts") < value + MIN_SEPARATION then
+      params:set("max_volts", value + MIN_SEPARATION)
+    end
+    minmax_changed()
+  end)
+  params:add_control("max_volts", "Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, 5))
+  params:set_action("max_volts", function(value)
+    if params:get("min_volts") > value - MIN_SEPARATION then
+      params:set("min_volts", value - MIN_SEPARATION)
+    end
+    minmax_changed()
+  end)
   for ctrl=1,NUM_CONTROLS do
     params:add_control(param_name_for_ctrl(ctrl), "Output "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
@@ -119,7 +132,7 @@ local function init_ui()
   corner_labels[3] = Label.new({x = 0, y = 64, text="Dial 1  Dial 2"})
   corner_labels[4] = Label.new({x = 128, y = 64, align=Label.ALIGN_RIGHT})
 
-  UIState.init_arc {
+  UIState.init_arc({
     device = arc_device,
     delta_callback = function(n, delta)
       arcify:update(n, delta)
@@ -127,7 +140,7 @@ local function init_ui()
     refresh_callback = function(my_arc)
       arcify:redraw()
     end
-  }
+  })
   UIState.init_screen({
     refresh_callback = function()
       redraw()
@@ -137,16 +150,13 @@ local function init_ui()
   redraw()
   ui_refresh_metro = metro.init()
   ui_refresh_metro.event = UIState.refresh
-  ui_refresh_metro.time = 1/60
+  ui_refresh_metro.time = 1/25
   ui_refresh_metro:start()
 end
 
--- function key(n, z)
---   -- All key presses are routed to the current page's class.
---   local screen_dirty = false
---   if current_page() then screen_dirty = current_page():key(n, z) end
---   ScreenState.mark_screen_dirty(screen_dirty)
--- end
+function key(n, z)
+  -- No key behavior yet
+end
 
 function enc(n, delta)
   if n == 1 then
@@ -155,7 +165,6 @@ function enc(n, delta)
   else
     local dial_index = (dial_focus == 2 and 2 or 0) + n - 1
     params:delta(param_name_for_ctrl(dial_index), delta)
-    UIState.set_dirty()
   end
 end
 
@@ -163,6 +172,7 @@ function init()
   init_params()
   init_ui()
   params:bang()
+  UIState.set_dirty()
 end
 
 function cleanup()
