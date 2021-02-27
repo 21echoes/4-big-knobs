@@ -7,7 +7,7 @@
 -- crow output voltage,
 -- ranging from -5V to +5V
 --
--- v0.1.0 @21echoes
+-- v0.9.0 @21echoes
 
 local UI = require 'ui'
 local ControlSpec = require "controlspec"
@@ -27,6 +27,7 @@ local corner_labels = {}
 local dial_focus = 1
 local ui_refresh_metro
 local crow_input_values = {0,0}
+local crow_refresh_rate = 1/25
 
   -- TODO: why does this app draw over the menu???
 
@@ -97,7 +98,10 @@ local function init_crow_inputs()
         refresh_crow_outs(false)
       end
     end
-    crow.input[crow_input].mode("stream", 1/25)
+    crow.input[crow_input].mode("stream", crow_refresh_rate)
+  end
+  for crow_output=1,NUM_CONTROLS do
+    crow.output[crow_output].slew = crow_refresh_rate
   end
 end
 
@@ -120,18 +124,18 @@ local function init_params()
     minmax_changed()
   end)
   for ctrl=1,NUM_CONTROLS do
+    params:add_option("output_"..ctrl, "Output "..ctrl.. " mapping", {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
+    params:set_action("output_"..ctrl, function()
+      refresh_crow_outs(false)
+    end)
+  end
+  for ctrl=1,NUM_CONTROLS do
     params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
       ctrl_changed(ctrl, true)
       params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
     end)
     arcify:register(param_name_for_ctrl(ctrl))
-  end
-  for ctrl=1,NUM_CONTROLS do
-    params:add_option("output_"..ctrl, "Output "..ctrl.. " mapping", {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
-    params:set_action("output_"..ctrl, function()
-      refresh_crow_outs(false)
-    end)
   end
 
   params:add_group("Crow Inputs", #crow_input_values*2)
