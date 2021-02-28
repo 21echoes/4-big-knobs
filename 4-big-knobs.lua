@@ -1,13 +1,14 @@
 -- 4 Big Knobs
 -- Control crow output voltage
 -- via 4 arc encoders
+-- (or just the norns encoders,
+--  or a MIDI device)
 --
--- Each arc encoder
--- controls the corresponding
--- crow output voltage,
--- ranging from -5V to +5V
+-- Quantization mode
+-- and more options
+-- available in params menu
 --
--- v0.9.2 @21echoes
+-- v0.9.3 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
