@@ -7,7 +7,7 @@
 -- crow output voltage,
 -- ranging from -5V to +5V
 --
--- v0.9.0 @21echoes
+-- v0.9.1 @21echoes
 
 local UI = require 'ui'
 local ControlSpec = require "controlspec"
@@ -190,13 +190,13 @@ function redraw()
       corner_labels[2]:redraw()
     end
     -- Bottom left
-    if dial_focus == 1 then
-      corner_labels[3].text = "Dial 1  Dial 2"
-    else
-      corner_labels[3].text = "Dial 3  Dial 4"
-    end
     corner_labels[3]:redraw()
     -- Bottom right
+    if dial_focus == 1 then
+      corner_labels[4].text = "Dial 1  Dial 2"
+    else
+      corner_labels[4].text = "Dial 3  Dial 4"
+    end
     corner_labels[4]:redraw()
   end
   screen.update()
@@ -209,8 +209,8 @@ local function init_ui()
   dials[4] = UI.Dial.new(104, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
   corner_labels[1] = Label.new({x = 0, y = 8, text="E1: Switch Focus"})
   corner_labels[2] = Label.new({x = 128, y = 8, text="Arc Found", align=Label.ALIGN_RIGHT})
-  corner_labels[3] = Label.new({x = 0, y = 64, text="Dial 1  Dial 2"})
-  corner_labels[4] = Label.new({x = 128, y = 64, align=Label.ALIGN_RIGHT})
+  corner_labels[3] = Label.new({x = 0, y = 64})
+  corner_labels[4] = Label.new({x = 128, y = 64, text="Dial 1  Dial 2", align=Label.ALIGN_RIGHT})
 
   UIState.init_arc({
     device = arc_device,
