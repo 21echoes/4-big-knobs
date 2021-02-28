@@ -10,6 +10,7 @@
 -- v0.9.2 @21echoes
 
 local UI = require 'ui'
+local MusicUtil = require "musicutil"
 local ControlSpec = require "controlspec"
 local Arcify = include("lib/arcify")
 local UIState = include('lib/ui_state')
@@ -28,6 +29,11 @@ local dial_focus = 1
 local ui_refresh_metro
 local crow_input_values = {0,0}
 local crow_refresh_rate = 1/25
+
+local scale_names = {}
+for index, value in ipairs(MusicUtil.SCALES) do
+  table.insert(scale_names, value.name)
+end
 
 function is_arc_connected()
   return arc_device and arc_device.device
@@ -99,6 +105,37 @@ local function minmax_changed()
   refresh_crow_outs(true)
 end
 
+function volts_for_midi(note_num)
+  return (note_num-36)/12
+end
+
+function generate_quantization_bank(bank)
+  local midi_root = -1 + params:get("scale_root_"..bank)
+  local midi_scale = MusicUtil.generate_scale(midi_root, params:get("scale_"..bank), 10)
+  local volts_scale = {}
+  for i=1,#midi_scale do
+    table.insert(volts_scale, volts_for_midi(midi_scale[i]))
+  end
+  return volts_scale
+end
+
+function quantize(bank)
+  local volts_scale = generate_quantization_bank(bank)
+  for ctrl=1,NUM_CONTROLS do
+    local unquantized = params:get(param_name_for_ctrl(ctrl))
+    local closeness = {0,10}
+    -- TODO: binary search this
+    for i=1,#volts_scale do
+      local distance = math.abs(volts_scale[i] - unquantized)
+      if distance < closeness[2] then
+        closeness[1] = i
+        closeness[2] = distance
+      end
+    end
+    params:set(param_name_for_ctrl(ctrl), volts_scale[closeness[1]])
+  end
+end
+
 local function init_crow_inputs()
   for crow_input=1,#crow_input_values do
     crow.input[crow_input].stream = function(v)
@@ -117,6 +154,8 @@ end
 
 local function init_params()
   params:add_separator()
+
+  params:add_option("mode", "Mode", {"Norns Control", "Quantize"}, is_arc_connected() and 2 or 1)
 
   params:add_group("Crow Outputs", 10)
   params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
@@ -140,7 +179,7 @@ local function init_params()
     end)
   end
   for ctrl=1,NUM_CONTROLS do
-    params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.01, 0))
+    params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.002, 0))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
       ctrl_changed(ctrl, true)
       params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
@@ -162,6 +201,16 @@ local function init_params()
     end)
   end
 
+  params:add_group("Quantization", 2*3)
+  for i=1,2 do
+    params:add_option("scale_"..i, "Scale Bank "..i, scale_names, 1)
+    params:add_option("scale_root_"..i, "Scale Root "..i, MusicUtil.NOTE_NAMES, 1)
+    params:add_trigger("quantize_"..i, "Quantize to Bank "..i.."!")
+    params:set_action("quantize_"..i, function()
+      quantize(i)
+    end)
+  end
+
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
   params:set_action("is_shield", function(value)
@@ -172,10 +221,28 @@ local function init_params()
     corner_labels[top_right].x = 128
     corner_labels[top_right].align = Label.ALIGN_RIGHT
   end)
+
   params:add_group("Arc", 4)
   arcify:add_params()
   for ctrl=1,NUM_CONTROLS do
     arcify:map_encoder_via_params(ctrl, param_name_for_ctrl(ctrl))
+  end
+end
+
+function update_bottom_text()
+  local mode = params:get("mode")
+  if mode == 1 then
+    corner_labels[3].text = ""
+    if dial_focus == 1 then
+      corner_labels[4].text = "Dial 1  Dial 2"
+    else
+      corner_labels[4].text = "Dial 3  Dial 4"
+    end
+  elseif mode == 2 then
+    corner_labels[3].text = "Quantize 1  2"
+    local scale1 = scale_names[params:get("scale_1")]
+    local scale2 = scale_names[params:get("scale_2")]
+    corner_labels[4].text = scale1.."  "..scale2
   end
 end
 
@@ -199,14 +266,10 @@ function redraw()
     if is_arc_connected() then
       corner_labels[2]:redraw()
     end
+    update_bottom_text()
     -- Bottom left
     corner_labels[3]:redraw()
     -- Bottom right
-    if dial_focus == 1 then
-      corner_labels[4].text = "Dial 1  Dial 2"
-    else
-      corner_labels[4].text = "Dial 3  Dial 4"
-    end
     corner_labels[4]:redraw()
   end
   screen.update()
@@ -245,10 +308,22 @@ local function init_ui()
 end
 
 function key(n, z)
-  -- No key behavior yet
+  -- Quantize
+  if params:get("mode") == 2 then
+    -- TODO: hold & turn encoder to set root note (or scale type?)
+    if z == 1 then
+      return
+    end
+    if n == 2 then
+      quantize(1)
+    elseif n == 3 then
+      quantize(2)
+    end
+  end
 end
 
 function enc(n, delta)
+  -- TODO: if quantize, then knobs control scale type (or root note?)
   if n == 1 then
     dial_focus = util.clamp(dial_focus + delta, 1, 2)
     UIState.set_dirty()
