@@ -20,11 +20,10 @@ function UI.refresh()
   end
 
   if UI.screen_dirty then
+    UI.screen_dirty = false
     if UI.refresh_screen_callback then
       UI.refresh_screen_callback()
     end
-    screen.update()
-    UI.screen_dirty = false
   end
 end
 

@@ -169,10 +169,11 @@ local function init_params()
   end
 end
 
-local function redraw()
+function redraw()
   -- TODO: why is there an open line when this starts?
   screen.move(dials[1].x+5, dials[1].y+20)
   screen.close()
+  screen.stroke()
   screen.clear()
   for ctrl=1,#dials do
     dials[ctrl].min_value = params:get("min_volts")
@@ -198,6 +199,7 @@ local function redraw()
     -- Bottom right
     corner_labels[4]:redraw()
   end
+  screen.update()
 end
 
 local function init_ui()
