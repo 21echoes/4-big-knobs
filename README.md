@@ -2,12 +2,15 @@
 Send control voltages out of Crow. Intended for use with Arc, where each Arc encoder controls the voltage sent from the corresponding Crow output.
 
 ## UI
+![home](screenshots/4-big-knobs.png)
 - 4 dials showing current voltage values
-- Top left text showing what E1 does
-- Top right text showing if arc is detected or not
-  - Will eventually show current mode, once mulitple modes are available
-- Bottom text shows current behavior of E2 & E3
-  - Will eventually show K2 & K3 behavior, once they do something depending on current mode
+
+- If helper text enabled (on by default):
+  - Top left text showing what E1 does
+  - Top right text showing if arc is detected or not
+    - Will eventually show current mode, once mulitple modes are available
+  - Bottom text shows current behavior of E2 & E3
+    - Will eventually show K2 & K3 behavior, once they do something depending on current mode
 
 ## Controls
 ### Arc (optional)
