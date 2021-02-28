@@ -7,7 +7,7 @@
 -- crow output voltage,
 -- ranging from -5V to +5V
 --
--- v0.9.1 @21echoes
+-- v0.9.2 @21echoes
 
 local UI = require 'ui'
 local ControlSpec = require "controlspec"
@@ -29,7 +29,17 @@ local ui_refresh_metro
 local crow_input_values = {0,0}
 local crow_refresh_rate = 1/25
 
-  -- TODO: why does this app draw over the menu???
+function is_arc_connected()
+  return arc_device and arc_device.device
+end
+
+function arc.add()
+  UIState.set_dirty()
+end
+
+function arc.remove()
+  UIState.set_dirty()
+end
 
 local function param_name_for_ctrl(ctrl)
   return ctrl.."_volt"
@@ -186,7 +196,7 @@ function redraw()
     -- Top left (top right if is_shield)
     corner_labels[1]:redraw()
     -- Top right (top left if is_shield)
-    if arc_device then
+    if is_arc_connected() then
       corner_labels[2]:redraw()
     end
     -- Bottom left
