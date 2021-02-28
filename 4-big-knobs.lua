@@ -204,11 +204,11 @@ local function init_params()
   params:add_group("Quantization", 2*3)
   for i=1,2 do
     params:add_option("scale_"..i, "Scale Bank "..i, scale_names, 1)
+    params:set_action("scale_"..i, function() UIState.set_dirty() end)
     params:add_option("scale_root_"..i, "Scale Root "..i, MusicUtil.NOTE_NAMES, 1)
+    params:set_action("scale_root_"..i, function() UIState.set_dirty() end)
     params:add_trigger("quantize_"..i, "Quantize to Bank "..i.."!")
-    params:set_action("quantize_"..i, function()
-      quantize(i)
-    end)
+    params:set_action("quantize_"..i, function() quantize(i) end)
   end
 
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
@@ -229,20 +229,45 @@ local function init_params()
   end
 end
 
+function get_scale_name(bank)
+  local full_name = MusicUtil.NOTE_NAMES[params:get("scale_root_"..bank)].." "..scale_names[params:get("scale_"..bank)]
+  if #full_name > 22 then
+    local prefix = string.sub(full_name, 1, 9)
+    local suffix = string.sub(full_name, #full_name - 9)
+    return prefix..".."..suffix
+  else
+    return full_name
+  end
+end
+
 function update_bottom_text()
   local mode = params:get("mode")
   if mode == 1 then
     corner_labels[3].text = ""
     if dial_focus == 1 then
-      corner_labels[4].text = "Dial 1  Dial 2"
+      corner_labels[4][1].text = "Dial 1"
+      corner_labels[4][2].text = "Dial 2"
     else
-      corner_labels[4].text = "Dial 3  Dial 4"
+      corner_labels[4][1].text = "Dial 3"
+      corner_labels[4][2].text = "Dial 4"
     end
+    corner_labels[4][1].level = 15
+    corner_labels[4][2].level = 15
+    corner_labels[4][1].x = corner_labels[4][2].x - (screen.text_extents(corner_labels[4][2].text) + 16)
+    corner_labels[4][1].y = corner_labels[4][2].y
   elseif mode == 2 then
-    corner_labels[3].text = "Quantize 1  2"
-    local scale1 = scale_names[params:get("scale_1")]
-    local scale2 = scale_names[params:get("scale_2")]
-    corner_labels[4].text = scale1.."  "..scale2
+    corner_labels[3].text = "Qnt 1 2"
+    corner_labels[4][1].text = get_scale_name(1)
+    corner_labels[4][2].text = get_scale_name(2)
+    if dial_focus == 1 then
+      corner_labels[4][1].level = 15
+      corner_labels[4][2].level = 3
+    else
+      corner_labels[4][1].level = 3
+      corner_labels[4][2].level = 15
+    end
+    corner_labels[4][1].x = corner_labels[4][2].x
+    corner_labels[4][1].y = corner_labels[4][2].y - 8
   end
 end
 
@@ -252,13 +277,20 @@ function redraw()
   screen.close()
   screen.stroke()
   screen.clear()
+  local mode = params:get("mode")
   for ctrl=1,#dials do
     dials[ctrl].min_value = params:get("min_volts")
     dials[ctrl].max_value = params:get("max_volts")
     dials[ctrl]:set_value(params:get(param_name_for_ctrl(ctrl)))
-    dials[ctrl].active = (dial_focus == 1 and ctrl < 3) or (dial_focus == 2 and ctrl >= 3)
+    dials[ctrl].active = mode ~= 1 or (dial_focus == 1 and ctrl < 3) or (dial_focus == 2 and ctrl >= 3)
+    if mode == 2 then
+      dials[ctrl].y = 16
+    else
+      dials[ctrl].y = 19.5
+    end
     dials[ctrl]:redraw()
   end
+  update_bottom_text()
   if params:get("show_instructions") == 2 then
     -- Top left (top right if is_shield)
     corner_labels[1]:redraw()
@@ -266,24 +298,31 @@ function redraw()
     if is_arc_connected() then
       corner_labels[2]:redraw()
     end
-    update_bottom_text()
     -- Bottom left
     corner_labels[3]:redraw()
+  end
+  -- Show bottom right no matter what if in Quantize mode
+  if params:get("show_instructions") == 2 or mode == 2 then
     -- Bottom right
-    corner_labels[4]:redraw()
+    for i=1,#corner_labels[4] do
+      corner_labels[4][i]:redraw()
+    end
   end
   screen.update()
 end
 
 local function init_ui()
-  dials[1] = UI.Dial.new(2, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
-  dials[2] = UI.Dial.new(36, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
-  dials[3] = UI.Dial.new(70, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
-  dials[4] = UI.Dial.new(104, 19.5, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
+  dials[1] = UI.Dial.new(4, 16, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
+  dials[2] = UI.Dial.new(37, 16, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
+  dials[3] = UI.Dial.new(69, 16, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
+  dials[4] = UI.Dial.new(102, 16, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
   corner_labels[1] = Label.new({x = 0, y = 8, text="E1: Switch Focus"})
   corner_labels[2] = Label.new({x = 128, y = 8, text="Arc Found", align=Label.ALIGN_RIGHT})
-  corner_labels[3] = Label.new({x = 0, y = 64})
-  corner_labels[4] = Label.new({x = 128, y = 64, text="Dial 1  Dial 2", align=Label.ALIGN_RIGHT})
+  corner_labels[3] = Label.new({x = 0, y = 63})
+  corner_labels[4] = {
+    Label.new({x = 128, y = 55, text="Dial 1", align=Label.ALIGN_RIGHT}),
+    Label.new({x = 128, y = 63, text="Dial 2", align=Label.ALIGN_RIGHT})
+  }
 
   UIState.init_arc({
     device = arc_device,
@@ -308,9 +347,9 @@ local function init_ui()
 end
 
 function key(n, z)
+  local mode = params:get("mode")
   -- Quantize
-  if params:get("mode") == 2 then
-    -- TODO: hold & turn encoder to set root note (or scale type?)
+  if mode == 2 then
     if z == 1 then
       return
     end
@@ -323,13 +362,26 @@ function key(n, z)
 end
 
 function enc(n, delta)
-  -- TODO: if quantize, then knobs control scale type (or root note?)
-  if n == 1 then
-    dial_focus = util.clamp(dial_focus + delta, 1, 2)
-    UIState.set_dirty()
-  else
-    local dial_index = (dial_focus == 2 and 2 or 0) + n - 1
-    params:delta(param_name_for_ctrl(dial_index), delta)
+  local mode = params:get("mode")
+  if mode == 1 then
+    -- Norns Control mode
+    if n == 1 then
+      dial_focus = util.clamp(dial_focus + delta, 1, 2)
+      UIState.set_dirty()
+    else
+      local dial_index = (dial_focus == 2 and 2 or 0) + n - 1
+      params:delta(param_name_for_ctrl(dial_index), delta)
+    end
+  elseif mode == 2 then
+    -- Quantize mode
+    if n == 1 then
+      dial_focus = util.clamp(dial_focus + delta, 1, 2)
+      UIState.set_dirty()
+    elseif n == 2 then
+      params:delta("scale_root_"..dial_focus, delta)
+    elseif n == 3 then
+      params:delta("scale_"..dial_focus, delta)
+    end
   end
 end
 
