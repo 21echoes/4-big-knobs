@@ -8,7 +8,7 @@
 -- and more options
 -- available in params menu
 --
--- v0.9.3 @21echoes
+-- v0.9.4 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
@@ -30,6 +30,7 @@ local dial_focus = 1
 local ui_refresh_metro
 local crow_input_values = {0,0}
 local crow_refresh_rate = 1/25
+local quantization_bank = {}
 
 local scale_names = {}
 for index, value in ipairs(MusicUtil.SCALES) do
@@ -59,7 +60,7 @@ local function compute_voltage(ctrl)
   -- Attenuate
   for crow_input=1,#crow_input_values do
     local input_mode = params:get("input_"..crow_input)
-    if input_mode == 2 then
+    if input_mode == 3 then
       local ratio = util.clamp((crow_input_values[crow_input] / params:get("input_"..crow_input.."_atten")), 0, 1)
       v = v * ratio
     end
@@ -68,7 +69,7 @@ local function compute_voltage(ctrl)
   -- Offset
   for crow_input=1,#crow_input_values do
     local input_mode = params:get("input_"..crow_input)
-    if input_mode == 1 then
+    if input_mode == 2 then
       v = v + crow_input_values[crow_input]
     end
   end
@@ -110,31 +111,69 @@ function volts_for_midi(note_num)
   return (note_num-36)/12
 end
 
-function generate_quantization_bank(bank)
-  local midi_root = -1 + params:get("scale_root_"..bank)
-  local midi_scale = MusicUtil.generate_scale(midi_root, params:get("scale_"..bank), 10)
+function generate_crow_scale()
+  local midi_root = -1 + params:get("scale_root")
+  local midi_scale = MusicUtil.generate_scale(midi_root, params:get("scale_type"), 1)
+  local intervals_scale = {}
+  for i=1,(#midi_scale - 1) do
+    table.insert(intervals_scale, midi_scale[i] % 12)
+  end
+  table.sort(intervals_scale)
+  return intervals_scale
+end
+
+function update_quantization_bank()
+  local midi_root = -1 + params:get("scale_root")
+  local midi_scale = MusicUtil.generate_scale(midi_root, params:get("scale_type"), 10)
   local volts_scale = {}
   for i=1,#midi_scale do
     table.insert(volts_scale, volts_for_midi(midi_scale[i]))
   end
-  return volts_scale
+  quantization_bank = volts_scale
+  update_crow_scale()
+  UIState.set_dirty()
 end
 
-function quantize(bank)
-  local volts_scale = generate_quantization_bank(bank)
+function get_quantized_voltage(volts)
+  local closeness = {0,10}
+  -- TODO: binary search this
+  for i=1,#quantization_bank do
+    local distance = math.abs(quantization_bank[i] - volts)
+    if distance < closeness[2] then
+      closeness[1] = i
+      closeness[2] = distance
+    end
+  end
+  return quantization_bank[closeness[1]]
+end
+
+function quantize()
   for ctrl=1,NUM_CONTROLS do
     local unquantized = params:get(param_name_for_ctrl(ctrl))
-    local closeness = {0,10}
-    -- TODO: binary search this
-    for i=1,#volts_scale do
-      local distance = math.abs(volts_scale[i] - unquantized)
-      if distance < closeness[2] then
-        closeness[1] = i
-        closeness[2] = distance
-      end
-    end
-    params:set(param_name_for_ctrl(ctrl), volts_scale[closeness[1]])
+    local quantized = get_quantized_voltage(unquantized)
+    params:set(param_name_for_ctrl(ctrl), quantized)
   end
+end
+
+function update_crow_scale()
+  if params:get("quantize_mode") == 2 then
+    local crow_scale = generate_crow_scale()
+    for i=1,NUM_CONTROLS do
+      crow.output[i].scale(crow_scale)
+    end
+  end
+end
+
+function set_quantize_mode(quantize_mode)
+  if quantize_mode == 1 then
+    quantize()
+    for i=1,NUM_CONTROLS do
+      crow.output[i].scale('none')
+    end
+  else
+    update_crow_scale()
+  end
+  UIState.set_dirty()
 end
 
 local function init_crow_inputs()
@@ -190,7 +229,7 @@ local function init_params()
 
   params:add_group("Crow Inputs", #crow_input_values*2)
   for crow_in=1,#crow_input_values do
-    params:add_option("input_"..crow_in, "Input Function", {"Offset", "Attenuate", "None"}, 1)
+    params:add_option("input_"..crow_in, "Input Function", {"None", "Offset", "Attenuate"}, 1)
     params:set_action("input_"..crow_in, function()
       refresh_crow_outs(false)
     end)
@@ -202,15 +241,19 @@ local function init_params()
     end)
   end
 
-  params:add_group("Quantization", 2*3)
-  for i=1,2 do
-    params:add_option("scale_"..i, "Scale Bank "..i, scale_names, 1)
-    params:set_action("scale_"..i, function() UIState.set_dirty() end)
-    params:add_option("scale_root_"..i, "Scale Root "..i, MusicUtil.NOTE_NAMES, 1)
-    params:set_action("scale_root_"..i, function() UIState.set_dirty() end)
-    params:add_trigger("quantize_"..i, "Quantize to Bank "..i.."!")
-    params:set_action("quantize_"..i, function() quantize(i) end)
-  end
+  params:add_group("Quantization", 4)
+  params:add_option("scale_type", "Scale Type", scale_names, 1)
+  params:set_action("scale_type", function()
+    update_quantization_bank()
+  end)
+  params:add_option("scale_root", "Scale Root ", MusicUtil.NOTE_NAMES, 1)
+  params:set_action("scale_root", function()
+    update_quantization_bank()
+  end)
+  params:add_option("quantize_mode", "Quantize Mode", {"On Demand", "Continuous"}, 1)
+  params:set_action("quantize_mode", function(value) set_quantize_mode(value) end)
+  params:add_trigger("quantize", "Quantize!")
+  params:set_action("quantize", function() quantize() end)
 
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
@@ -230,8 +273,8 @@ local function init_params()
   end
 end
 
-function get_scale_name(bank)
-  local full_name = MusicUtil.NOTE_NAMES[params:get("scale_root_"..bank)].." "..scale_names[params:get("scale_"..bank)]
+function get_scale_name()
+  local full_name = MusicUtil.NOTE_NAMES[params:get("scale_root")].." "..scale_names[params:get("scale_type")]
   if #full_name > 22 then
     local prefix = string.sub(full_name, 1, 9)
     local suffix = string.sub(full_name, #full_name - 9)
@@ -244,31 +287,32 @@ end
 function update_bottom_text()
   local mode = params:get("mode")
   if mode == 1 then
-    corner_labels[3].text = ""
+    corner_labels[3][1].text = ""
+    corner_labels[3][2].text = ""
     if dial_focus == 1 then
-      corner_labels[4][1].text = "Dial 1"
-      corner_labels[4][2].text = "Dial 2"
+      corner_labels[4].text = "Dial 1 | Dial 2"
     else
-      corner_labels[4][1].text = "Dial 3"
-      corner_labels[4][2].text = "Dial 4"
+      corner_labels[4].text = "Dial 3 | Dial 4"
     end
-    corner_labels[4][1].level = 15
-    corner_labels[4][2].level = 15
-    corner_labels[4][1].x = corner_labels[4][2].x - (screen.text_extents(corner_labels[4][2].text) + 16)
-    corner_labels[4][1].y = corner_labels[4][2].y
   elseif mode == 2 then
-    corner_labels[3].text = "Qnt 1 2"
-    corner_labels[4][1].text = get_scale_name(1)
-    corner_labels[4][2].text = get_scale_name(2)
-    if dial_focus == 1 then
-      corner_labels[4][1].level = 15
-      corner_labels[4][2].level = 3
+    local quantize_mode = params:get("quantize_mode")
+    local show_instructions = params:get("show_instructions") == 2
+    if quantize_mode == 1 then
+      if show_instructions then
+        corner_labels[3][1].text = "K2: -> Continuous"
+        corner_labels[3][2].text = "K3: Qnt!"
+      else
+        corner_labels[3][2].text = "On-Demand"
+      end
     else
-      corner_labels[4][1].level = 3
-      corner_labels[4][2].level = 15
+      if show_instructions then
+        corner_labels[3][1].text = "K2: -> On-Demand"
+        corner_labels[3][2].text = ""
+      else
+        corner_labels[3][2].text = "Continuous"
+      end
     end
-    corner_labels[4][1].x = corner_labels[4][2].x
-    corner_labels[4][1].y = corner_labels[4][2].y - 8
+    corner_labels[4].text = get_scale_name()
   end
 end
 
@@ -279,6 +323,7 @@ function redraw()
   screen.stroke()
   screen.clear()
   local mode = params:get("mode")
+  local is_quantize_mode = mode == 2
   for ctrl=1,#dials do
     dials[ctrl].min_value = params:get("min_volts")
     dials[ctrl].max_value = params:get("max_volts")
@@ -292,22 +337,31 @@ function redraw()
     dials[ctrl]:redraw()
   end
   update_bottom_text()
-  if params:get("show_instructions") == 2 then
+  local show_instructions = params:get("show_instructions") == 2
+  if show_instructions then
     -- Top left (top right if is_shield)
+    corner_labels[1].text = mode == 1 and "E1: Switch Focus" or ""
     corner_labels[1]:redraw()
-    -- Top right (top left if is_shield)
-    if is_arc_connected() then
-      corner_labels[2]:redraw()
-    end
     -- Bottom left
-    corner_labels[3]:redraw()
-  end
-  -- Show bottom right no matter what if in Quantize mode
-  if params:get("show_instructions") == 2 or mode == 2 then
-    -- Bottom right
-    for i=1,#corner_labels[4] do
-      corner_labels[4][i]:redraw()
+    for i=1,#corner_labels[3] do
+      corner_labels[3][i]:redraw()
     end
+  end
+  -- Show bottom right and mode indicator no matter what if in Quantize mode
+  if show_instructions or is_quantize_mode then
+    -- Top right (top left if is_shield)
+    if is_quantize_mode then
+      if is_arc_connected() and show_instructions then
+        corner_labels[2].text = "Quantize | Arc Found"
+      else
+        corner_labels[2].text = "Quantize"
+      end
+    elseif is_arc_connected() and show_instructions then
+      corner_labels[2].text = "Arc Found"
+    end
+    corner_labels[2]:redraw()
+    -- Bottom right
+    corner_labels[4]:redraw()
   end
   screen.update()
 end
@@ -319,11 +373,11 @@ local function init_ui()
   dials[4] = UI.Dial.new(102, 16, 22, 0, MIN_VOLTS, MAX_VOLTS, 0.01, 0, {}, 'V')
   corner_labels[1] = Label.new({x = 0, y = 8, text="E1: Switch Focus"})
   corner_labels[2] = Label.new({x = 128, y = 8, text="Arc Found", align=Label.ALIGN_RIGHT})
-  corner_labels[3] = Label.new({x = 0, y = 63})
-  corner_labels[4] = {
-    Label.new({x = 128, y = 55, text="Dial 1", align=Label.ALIGN_RIGHT}),
-    Label.new({x = 128, y = 63, text="Dial 2", align=Label.ALIGN_RIGHT})
+  corner_labels[3] = {
+    Label.new({x = 0, y = 55}),
+    Label.new({x = 0, y = 63})
   }
+  corner_labels[4] = Label.new({x = 128, y = 63, text="Dial 2", align=Label.ALIGN_RIGHT})
 
   UIState.init_arc({
     device = arc_device,
@@ -355,9 +409,9 @@ function key(n, z)
       return
     end
     if n == 2 then
-      quantize(1)
+      params:set("quantize_mode", (params:get("quantize_mode") % 2) + 1)
     elseif n == 3 then
-      quantize(2)
+      quantize()
     end
   end
 end
@@ -375,13 +429,10 @@ function enc(n, delta)
     end
   elseif mode == 2 then
     -- Quantize mode
-    if n == 1 then
-      dial_focus = util.clamp(dial_focus + delta, 1, 2)
-      UIState.set_dirty()
-    elseif n == 2 then
-      params:delta("scale_root_"..dial_focus, delta)
+    if n == 2 then
+      params:delta("scale_root", delta)
     elseif n == 3 then
-      params:delta("scale_"..dial_focus, delta)
+      params:delta("scale_type", delta)
     end
   end
 end
