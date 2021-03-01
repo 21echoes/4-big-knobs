@@ -16,9 +16,9 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 
 ### Quantize mode
 * Switch modes via Params menu. Defaults to Quantize mode if launched with an Arc connected
-* E1 changes focused scale for editing
 * E2 & E3 select scale root and scale type
-* K2 & K3 quantize all outputs to their respective scales
+* K2: Toggle between continuous quantization and on-demand quantization
+* K3: Quantize now!
 
 ## Additional Parameters
 * Crow Outputs
@@ -33,28 +33,12 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
   * You can turn off the helper text once you understand how it works
 
 ## Requirements
-* norns
-* crow
+* norns (200712 or later)
+* crow (2.0.0 or later)
 * arc optional, but encouraged
   * use a MIDI device in place of an arc by going into the params menu, clicking “map”, scrolling to “crow outputs”, scroll to “1_volt” and the other 4 options, and map each of them to a different control on the MIDI device
 
 ## Roadmap
-### Quantize mode
-* Continuous quantization
-
 ### Snapshot mode
 * K2 & K3 save current state to one of two snapshot banks
 * E1 interpolates between two snapshots
-
-### Download
-Latest version: v0.9.0 (028bc6c)
-
-Not yet available in the Maiden Library. Instead, install by visiting http://norns.local/maiden when your norns is on WiFi and typing
-```
-;install https://github.com/21echoes/4-big-knobs.git
-```
-into the command entry box at the bottom of the screen.
-
-Also available as a [direct download ](https://github.com/21echoes/4-big-knobs/archive/master.zip). Unzip it, rename the folder to just “4-big-knobs”, and put the whole folder onto your norns inside the `/home/we/dust/code` folder
-
-https://github.com/21echoes/4-big-knobs
