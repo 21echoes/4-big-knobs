@@ -9,7 +9,7 @@
 -- and more options
 -- available in params menu
 --
--- v0.9.6 @21echoes
+-- v0.9.7 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
@@ -33,6 +33,7 @@ local crow_input_values = {0,0}
 local crow_refresh_rate = 1/25
 local quantization_bank = {}
 local reset_slew_metro
+local snapshot_midpoint = {0, {0,0,0,0}}
 
 local scale_names = {}
 for index, value in ipairs(MusicUtil.SCALES) do
@@ -222,7 +223,19 @@ local function set_snapshot_interpolation(interpolation)
   for ctrl=1,NUM_CONTROLS do
     local snapshot_1_value = params:get("snapshot_1_"..ctrl)
     local snapshot_2_value = params:get("snapshot_2_"..ctrl)
-    local averaged = ((2-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_2_value)
+    local averaged = snapshot_1_value
+    if snapshot_midpoint[1] ~= 0 then
+      local snapshot_midpoint_value = snapshot_midpoint[2][ctrl]
+      if snapshot_midpoint[1] < interpolation then
+        local midpoint_to_2 = 2 - snapshot_midpoint[1]
+        averaged = (((2-interpolation)*snapshot_midpoint_value) + ((interpolation-snapshot_midpoint[1])*snapshot_2_value))/midpoint_to_2
+      else
+        local midpoint_to_1 = snapshot_midpoint[1] - 1
+        averaged = (((snapshot_midpoint[1]-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_midpoint_value))/midpoint_to_1
+      end
+    else
+      averaged = ((2-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_2_value)
+    end
     params:set(param_name_for_ctrl(ctrl), averaged)
   end
 end
@@ -307,6 +320,7 @@ local function init_params()
     params:add_trigger("snapshot_"..snapshot.."_capture", "Capture snapshot "..snapshot)
     params:set_action("snapshot_"..snapshot.."_capture", function()
       capture_snapshot(snapshot)
+      snapshot_midpoint[1] = 0
       params:set("snapshot_interpolation", snapshot)
     end)
   end
@@ -467,6 +481,13 @@ local function init_ui()
     device = arc_device,
     delta_callback = function(n, delta)
       arcify:update(n, delta)
+      snapshot_midpoint[1] = params:get("snapshot_interpolation")
+      snapshot_midpoint[2] = {
+        params:get(param_name_for_ctrl(1)),
+        params:get(param_name_for_ctrl(2)),
+        params:get(param_name_for_ctrl(3)),
+        params:get(param_name_for_ctrl(4))
+      }
     end,
     refresh_callback = function(my_arc)
       arcify:redraw()

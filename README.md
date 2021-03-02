@@ -18,6 +18,9 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 * Switch modes via Params menu. Defaults to Snapshot mode if launched with an Arc connected
 * K2 & K3 save current state to one of two snapshot banks
 * E1 interpolates between the two snapshots
+* If you change a dial while interpolating, an intermediary snapshot is taken.
+  * Now as you turn E1, you are interpolating between 3 snapshots: snapshot 1 at the leftmost extreme, snapshot 2 at the rightmost extreme, and your intermediary snapshot in between them (located wherever the interpolation was when you changed the dial)
+  * The intermediary snapshot is reset whenever you take a new real snapshot
 
 ### Quantize mode
 * Switch modes via Params menu
@@ -48,7 +51,3 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 ## Roadmap
 ## Quantization mode
 * More scales (whole volts, 10TET, more?)
-
-## Snapshot interpolation improvements
-* If use arc to move while halfway thru interpolating, still slew over the course of the knob to the target when resuming interpolation
-  * In effect, take a snapshot whenever arc is touched, include current interpolation position in that snapshot
