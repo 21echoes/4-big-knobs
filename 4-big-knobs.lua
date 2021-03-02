@@ -9,7 +9,7 @@
 -- and more options
 -- available in params menu
 --
--- v0.9.5 @21echoes
+-- v0.9.6 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
@@ -32,6 +32,7 @@ local ui_refresh_metro
 local crow_input_values = {0,0}
 local crow_refresh_rate = 1/25
 local quantization_bank = {}
+local reset_slew_metro
 
 local scale_names = {}
 for index, value in ipairs(MusicUtil.SCALES) do
@@ -148,7 +149,27 @@ function get_quantized_voltage(volts)
   return quantization_bank[closeness[1]]
 end
 
+local function set_output_slew(slew)
+  for crow_output=1,NUM_CONTROLS do
+    crow.output[crow_output].slew = slew
+  end
+end
+
 function quantize()
+  local change_slew = params:get("quantize_slew") ~= params:get("output_slew")
+  if change_slew then
+    if reset_slew_metro then
+      metro.free(reset_slew_metro.id)
+      reset_slew_metro = nil
+    end
+    set_output_slew(params:get("quantize_slew"))
+    reset_slew_metro = metro.init(function()
+      set_output_slew(params:get("output_slew"))
+      metro.free(reset_slew_metro.id)
+      reset_slew_metro = nil
+    end)
+    reset_slew_metro:start(params:get("quantize_slew"), 1)
+  end
   for ctrl=1,NUM_CONTROLS do
     local unquantized = params:get(param_name_for_ctrl(ctrl))
     local quantized = get_quantized_voltage(unquantized)
@@ -188,9 +209,7 @@ local function init_crow_inputs()
     end
     crow.input[crow_input].mode("stream", crow_refresh_rate)
   end
-  for crow_output=1,NUM_CONTROLS do
-    crow.output[crow_output].slew = crow_refresh_rate
-  end
+  set_output_slew(params:get("output_slew"))
 end
 
 local function capture_snapshot(snapshot)
@@ -213,7 +232,9 @@ local function init_params()
 
   params:add_option("mode", "Mode", {"Norns Control", "Snapshot", "Quantize"}, is_arc_connected() and 2 or 1)
 
-  params:add_group("Crow Outputs", 10)
+  params:add_group("Crow Outputs", 11)
+  params:add_control("output_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate))
+  params:set_action("output_slew", function(value) set_output_slew(value) end)
   params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
   params:set_action("min_volts", function(value)
     if params:get("max_volts") < value + MIN_SEPARATION then
@@ -257,7 +278,7 @@ local function init_params()
     end)
   end
 
-  params:add_group("Quantization", 4)
+  params:add_group("Quantization", 5)
   params:add_option("scale_type", "Scale Type", scale_names, 1)
   params:set_action("scale_type", function()
     update_quantization_bank()
@@ -270,6 +291,7 @@ local function init_params()
   params:set_action("quantize_mode", function(value) set_quantize_mode(value) end)
   params:add_trigger("quantize", "Quantize!")
   params:set_action("quantize", function() quantize() end)
+  params:add_control("quantize_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate))
 
   params:add_group("Snapshots", 1+(2*(NUM_CONTROLS+1)))
   params:add_control("snapshot_interpolation", "Snapshot interpolation", ControlSpec.new(1, 2, "lin", 0.01, 1))
@@ -524,6 +546,8 @@ function cleanup()
   params:write()
   metro.free(ui_refresh_metro.id)
   ui_refresh_metro = nil
+  metro.free(reset_slew_metro.id)
+  reset_slew_metro = nil
 end
 
 function rerun()

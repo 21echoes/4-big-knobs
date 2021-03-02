@@ -24,9 +24,11 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 * E2 & E3 select scale root and scale type
 * K2: Toggle between continuous quantization and on-demand quantization
 * K3: Quantize now!
+* Set slew timing for quantization in the Params > Quantization menu
 
 ## Additional Parameters
 * Crow Outputs
+  * Slew time
   * Minimum and Maximum voltage
   * Customize dial -> Crow output mapping
   * Direct control over dial values (can be used for MIDI mapping if you'd like a different control surface)
@@ -45,7 +47,6 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 
 ## Roadmap
 ## Quantization mode
-* Slew timing option
 * More scales (whole volts, 10TET, more?)
 
 ## Snapshot interpolation improvements
