@@ -4,11 +4,12 @@
 -- (or just the norns encoders,
 --  or a MIDI device)
 --
--- Quantization mode
+-- Snapshot mode,
+-- quantization mode,
 -- and more options
 -- available in params menu
 --
--- v0.9.4 @21echoes
+-- v0.9.5 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
@@ -166,7 +167,7 @@ end
 
 function set_quantize_mode(quantize_mode)
   if quantize_mode == 1 then
-    quantize()
+    params:set("quantize", 1)
     for i=1,NUM_CONTROLS do
       crow.output[i].scale('none')
     end
@@ -192,10 +193,25 @@ local function init_crow_inputs()
   end
 end
 
+local function capture_snapshot(snapshot)
+  for ctrl=1,NUM_CONTROLS do
+    params:set("snapshot_"..snapshot.."_"..ctrl, params:get(param_name_for_ctrl(ctrl)))
+  end
+end
+
+local function set_snapshot_interpolation(interpolation)
+  for ctrl=1,NUM_CONTROLS do
+    local snapshot_1_value = params:get("snapshot_1_"..ctrl)
+    local snapshot_2_value = params:get("snapshot_2_"..ctrl)
+    local averaged = ((2-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_2_value)
+    params:set(param_name_for_ctrl(ctrl), averaged)
+  end
+end
+
 local function init_params()
   params:add_separator()
 
-  params:add_option("mode", "Mode", {"Norns Control", "Quantize"}, is_arc_connected() and 2 or 1)
+  params:add_option("mode", "Mode", {"Norns Control", "Snapshot", "Quantize"}, is_arc_connected() and 2 or 1)
 
   params:add_group("Crow Outputs", 10)
   params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
@@ -255,6 +271,24 @@ local function init_params()
   params:add_trigger("quantize", "Quantize!")
   params:set_action("quantize", function() quantize() end)
 
+  params:add_group("Snapshots", 1+(2*(NUM_CONTROLS+1)))
+  params:add_control("snapshot_interpolation", "Snapshot interpolation", ControlSpec.new(1, 2, "lin", 0.01, 1))
+  params:set_action("snapshot_interpolation", function(value) set_snapshot_interpolation(value) end)
+  for snapshot=1,2 do
+    for ctrl=1,NUM_CONTROLS do
+      params:add_control(
+        "snapshot_"..snapshot.."_"..ctrl,
+        "Snapshot "..snapshot..": "..ctrl,
+        ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.002, 0)
+      )
+    end
+    params:add_trigger("snapshot_"..snapshot.."_capture", "Capture snapshot "..snapshot)
+    params:set_action("snapshot_"..snapshot.."_capture", function()
+      capture_snapshot(snapshot)
+      params:set("snapshot_interpolation", snapshot)
+    end)
+  end
+
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
   params:set_action("is_shield", function(value)
@@ -286,30 +320,41 @@ end
 
 function update_bottom_text()
   local mode = params:get("mode")
+  local show_instructions = params:get("show_instructions") == 2
   if mode == 1 then
     corner_labels[3][1].text = ""
     corner_labels[3][2].text = ""
-    if dial_focus == 1 then
-      corner_labels[4].text = "Dial 1 | Dial 2"
-    else
-      corner_labels[4].text = "Dial 3 | Dial 4"
+    if show_instructions then
+      if dial_focus == 1 then
+        corner_labels[4].text = "Dial 1 | Dial 2"
+      else
+        corner_labels[4].text = "Dial 3 | Dial 4"
+      end
     end
   elseif mode == 2 then
+    if show_instructions then
+      corner_labels[3][1].text = "K2: Snapshot 1"
+      corner_labels[3][2].text = "K3: Snapshot 2"
+    end
+    corner_labels[4].text = ""
+  elseif mode == 3 then
+    -- Quantize
     local quantize_mode = params:get("quantize_mode")
-    local show_instructions = params:get("show_instructions") == 2
     if quantize_mode == 1 then
       if show_instructions then
         corner_labels[3][1].text = "K2: -> Continuous"
         corner_labels[3][2].text = "K3: Qnt!"
       else
-        corner_labels[3][2].text = "On-Demand"
+        corner_labels[3][1].text = "On-Demand"
+        corner_labels[3][2].text = ""
       end
     else
       if show_instructions then
         corner_labels[3][1].text = "K2: -> On-Demand"
         corner_labels[3][2].text = ""
       else
-        corner_labels[3][2].text = "Continuous"
+        corner_labels[3][1].text = "Continuous"
+        corner_labels[3][2].text = ""
       end
     end
     corner_labels[4].text = get_scale_name()
@@ -323,46 +368,63 @@ function redraw()
   screen.stroke()
   screen.clear()
   local mode = params:get("mode")
-  local is_quantize_mode = mode == 2
+  local is_quantize_mode = mode == 3
   for ctrl=1,#dials do
     dials[ctrl].min_value = params:get("min_volts")
     dials[ctrl].max_value = params:get("max_volts")
     dials[ctrl]:set_value(params:get(param_name_for_ctrl(ctrl)))
     dials[ctrl].active = mode ~= 1 or (dial_focus == 1 and ctrl < 3) or (dial_focus == 2 and ctrl >= 3)
-    if mode == 2 then
-      dials[ctrl].y = 16
-    else
+    if mode == 1 then
       dials[ctrl].y = 19.5
+    else
+      dials[ctrl].y = 16
     end
     dials[ctrl]:redraw()
   end
-  update_bottom_text()
+
   local show_instructions = params:get("show_instructions") == 2
+
+  -- Top left (top right if is_shield)
   if show_instructions then
-    -- Top left (top right if is_shield)
-    corner_labels[1].text = mode == 1 and "E1: Switch Focus" or ""
-    corner_labels[1]:redraw()
-    -- Bottom left
-    for i=1,#corner_labels[3] do
-      corner_labels[3][i]:redraw()
+    if mode == 1 then
+      corner_labels[1].text = "E1: Switch Focus"
+    elseif mode == 2 then
+      corner_labels[1].text = "E1: Interp."
+    elseif mode == 3 then
+      corner_labels[1].text = ""
     end
+    corner_labels[1]:redraw()
   end
-  -- Show bottom right and mode indicator no matter what if in Quantize mode
-  if show_instructions or is_quantize_mode then
-    -- Top right (top left if is_shield)
-    if is_quantize_mode then
-      if is_arc_connected() and show_instructions then
-        corner_labels[2].text = "Quantize | Arc Found"
-      else
-        corner_labels[2].text = "Quantize"
-      end
-    elseif is_arc_connected() and show_instructions then
+
+  -- Top right (top left if is_shield)
+  if mode == 1 then
+    if is_arc_connected() and show_instructions then
       corner_labels[2].text = "Arc Found"
     end
-    corner_labels[2]:redraw()
-    -- Bottom right
-    corner_labels[4]:redraw()
+  elseif mode == 2 then
+    if is_arc_connected() and show_instructions then
+      corner_labels[2].text = "Snapshot w/Arc"
+    else
+      corner_labels[2].text = "Snapshot"
+    end
+  elseif mode == 3 then
+    if is_arc_connected() and show_instructions then
+      corner_labels[2].text = "Quantize w/Arc"
+    else
+      corner_labels[2].text = "Quantize"
+    end
   end
+  corner_labels[2]:redraw()
+
+  -- update_bottom_text takes show_instructions into account
+  update_bottom_text()
+  -- Bottom left
+  for i=1,#corner_labels[3] do
+    corner_labels[3][i]:redraw()
+  end
+  -- Bottom right
+  corner_labels[4]:redraw()
+
   screen.update()
 end
 
@@ -377,7 +439,7 @@ local function init_ui()
     Label.new({x = 0, y = 55}),
     Label.new({x = 0, y = 63})
   }
-  corner_labels[4] = Label.new({x = 128, y = 63, text="Dial 2", align=Label.ALIGN_RIGHT})
+  corner_labels[4] = Label.new({x = 128, y = 63, text="Dial 1 | Dial 2", align=Label.ALIGN_RIGHT})
 
   UIState.init_arc({
     device = arc_device,
@@ -403,15 +465,24 @@ end
 
 function key(n, z)
   local mode = params:get("mode")
-  -- Quantize
   if mode == 2 then
+    if z == 1 then
+      return
+    end
+    if n == 2 then
+      params:set("snapshot_1_capture", 1)
+    elseif n == 3 then
+      params:set("snapshot_2_capture", 1)
+    end
+  elseif mode == 3 then
+    -- Quantize
     if z == 1 then
       return
     end
     if n == 2 then
       params:set("quantize_mode", (params:get("quantize_mode") % 2) + 1)
     elseif n == 3 then
-      quantize()
+      params:set("quantize", 1)
     end
   end
 end
@@ -428,6 +499,10 @@ function enc(n, delta)
       params:delta(param_name_for_ctrl(dial_index), delta)
     end
   elseif mode == 2 then
+    if n == 1 then
+      params:delta("snapshot_interpolation", delta)
+    end
+  elseif mode == 3 then
     -- Quantize mode
     if n == 2 then
       params:delta("scale_root", delta)

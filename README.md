@@ -14,8 +14,13 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 * E1 changes which dials are focused
 * E2 & E3 are mapped to the highlighted dials on screen
 
+### Snapshot mode
+* Switch modes via Params menu. Defaults to Snapshot mode if launched with an Arc connected
+* K2 & K3 save current state to one of two snapshot banks
+* E1 interpolates between the two snapshots
+
 ### Quantize mode
-* Switch modes via Params menu. Defaults to Quantize mode if launched with an Arc connected
+* Switch modes via Params menu
 * E2 & E3 select scale root and scale type
 * K2: Toggle between continuous quantization and on-demand quantization
 * K3: Quantize now!
@@ -39,6 +44,10 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
   * use a MIDI device in place of an arc by going into the params menu, clicking “map”, scrolling to “crow outputs”, scroll to “1_volt” and the other 4 options, and map each of them to a different control on the MIDI device
 
 ## Roadmap
-### Snapshot mode
-* K2 & K3 save current state to one of two snapshot banks
-* E1 interpolates between two snapshots
+## Quantization mode
+* Slew timing option
+* More scales (whole volts, 10TET, more?)
+
+## Snapshot interpolation improvements
+* If use arc to move while halfway thru interpolating, still slew over the course of the knob to the target when resuming interpolation
+  * In effect, take a snapshot whenever arc is touched, include current interpolation position in that snapshot
