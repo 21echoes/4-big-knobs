@@ -219,7 +219,27 @@ local function capture_snapshot(snapshot)
   end
 end
 
+local function interpolation_untouched()
+  -- On first load of a paramset without any snapshots,
+  -- everything is zero'd, so we overwrite any saved voltages with the interpolation state
+  if params:get("snapshot_interpolation") ~= 1 then
+    return false
+  end
+  for ctrl=1,NUM_CONTROLS do
+    for i=1,2 do
+      local snapshot_value = params:get("snapshot_"..i.."_"..ctrl)
+      if snapshot_value ~= 0 then
+        return false
+      end
+    end
+  end
+  return true
+end
+
 local function set_snapshot_interpolation(interpolation)
+  if interpolation_untouched() then
+    return
+  end
   for ctrl=1,NUM_CONTROLS do
     local snapshot_1_value = params:get("snapshot_1_"..ctrl)
     local snapshot_2_value = params:get("snapshot_2_"..ctrl)
@@ -231,7 +251,11 @@ local function set_snapshot_interpolation(interpolation)
         averaged = (((2-interpolation)*snapshot_midpoint_value) + ((interpolation-snapshot_midpoint[1])*snapshot_2_value))/midpoint_to_2
       else
         local midpoint_to_1 = snapshot_midpoint[1] - 1
-        averaged = (((snapshot_midpoint[1]-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_midpoint_value))/midpoint_to_1
+        if midpoint_to_1 == 0 then
+          averaged = ((2-interpolation)*snapshot_midpoint_value) + ((interpolation-1)*snapshot_2_value)
+        else
+          averaged = (((snapshot_midpoint[1]-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_midpoint_value))/midpoint_to_1
+        end
       end
     else
       averaged = ((2-interpolation)*snapshot_1_value) + ((interpolation-1)*snapshot_2_value)
@@ -436,6 +460,8 @@ function redraw()
   if mode == 1 then
     if is_arc_connected() and show_instructions then
       corner_labels[2].text = "Arc Found"
+    else
+      corner_labels[2].text = ""
     end
   elseif mode == 2 then
     if is_arc_connected() and show_instructions then
@@ -559,6 +585,7 @@ function init()
   init_params()
   init_crow_inputs()
   init_ui()
+  params:read()
   params:bang()
   UIState.set_dirty()
 end
