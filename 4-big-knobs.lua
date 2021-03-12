@@ -30,6 +30,7 @@ local corner_labels = {}
 local dial_focus = 1
 local ui_refresh_metro
 local crow_input_values = {0,0}
+local CROW_INPUT_HYSTERESIS = 0.002
 local crow_refresh_rate = 1/25
 local quantization_bank = {}
 local reset_slew_metro
@@ -202,9 +203,10 @@ end
 local function init_crow_inputs()
   for crow_input=1,#crow_input_values do
     crow.input[crow_input].stream = function(v)
-      local changed = crow_input_values[crow_input] ~= v
-      crow_input_values[crow_input] = v
-      if changed then
+      if params:get("input_"..crow_input) == 1 then return end
+      local delta = math.abs(crow_input_values[crow_input] - v)
+      if delta > CROW_INPUT_HYSTERESIS then
+        crow_input_values[crow_input] = v
         refresh_crow_outs(false)
       end
     end
