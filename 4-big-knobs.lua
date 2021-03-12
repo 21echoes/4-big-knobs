@@ -84,6 +84,15 @@ end
 
 local function ctrl_changed(ctrl, refresh_ui)
   local voltage = compute_voltage(ctrl)
+  local continuous_quantization = params:get("quantize_mode") == 2
+  if continuous_quantization then
+    local quantized = get_quantized_voltage(voltage)
+    if quantized ~= nil then
+      voltage = quantized
+    else
+      continuous_quantization = false
+    end
+  end
   for crow_out=1,NUM_CONTROLS do
     if params:get("output_"..crow_out) == ctrl then
       crow.output[crow_out].volts = voltage
@@ -112,18 +121,7 @@ local function minmax_changed()
 end
 
 function volts_for_midi(note_num)
-  return (note_num-36)/12
-end
-
-function generate_crow_scale()
-  local midi_root = -1 + params:get("scale_root")
-  local midi_scale = MusicUtil.generate_scale(midi_root, params:get("scale_type"), 1)
-  local intervals_scale = {}
-  for i=1,(#midi_scale - 1) do
-    table.insert(intervals_scale, midi_scale[i] % 12)
-  end
-  table.sort(intervals_scale)
-  return intervals_scale
+  return (note_num-48)/12
 end
 
 function update_quantization_bank()
@@ -134,21 +132,38 @@ function update_quantization_bank()
     table.insert(volts_scale, volts_for_midi(midi_scale[i]))
   end
   quantization_bank = volts_scale
-  update_crow_scale()
   UIState.set_dirty()
 end
 
-function get_quantized_voltage(volts)
-  local closeness = {0,10}
-  -- TODO: binary search this
-  for i=1,#quantization_bank do
-    local distance = math.abs(quantization_bank[i] - volts)
-    if distance < closeness[2] then
-      closeness[1] = i
-      closeness[2] = distance
-    end
+function binary_search(list, value)
+  local function search(low, high)
+      if low > high then
+        if high == 0 or high > #list then
+          return low
+        end
+        if low == 0 or low > #list then
+          return high
+        end
+        -- tie-break with real distances
+        local low_distance = math.abs(list[low] - value)
+        local high_distance = math.abs(list[high] - value)
+        if low_distance < high_distance then return low end
+        return high
+      end
+      local mid = math.floor((low+high)/2)
+      if list[mid] > value then return search(low,mid-1) end
+      if list[mid] < value then return search(mid+1,high) end
+      return mid
   end
-  return quantization_bank[closeness[1]]
+  return search(1,#list)
+end
+
+function get_quantized_voltage(volts)
+  if #quantization_bank == 0 then
+    return nil
+  end
+  local bank_index = binary_search(quantization_bank, volts)
+  return quantization_bank[bank_index]
 end
 
 local function set_output_slew(slew)
@@ -175,29 +190,10 @@ function quantize()
   for ctrl=1,NUM_CONTROLS do
     local unquantized = params:get(param_name_for_ctrl(ctrl))
     local quantized = get_quantized_voltage(unquantized)
-    params:set(param_name_for_ctrl(ctrl), quantized)
-  end
-end
-
-function update_crow_scale()
-  if params:get("quantize_mode") == 2 then
-    local crow_scale = generate_crow_scale()
-    for i=1,NUM_CONTROLS do
-      crow.output[i].scale(crow_scale)
+    if quantized ~= nil then
+      params:set(param_name_for_ctrl(ctrl), quantized)
     end
   end
-end
-
-function set_quantize_mode(quantize_mode)
-  if quantize_mode == 1 then
-    params:set("quantize", 1)
-    for i=1,NUM_CONTROLS do
-      crow.output[i].scale('none')
-    end
-  else
-    update_crow_scale()
-  end
-  UIState.set_dirty()
 end
 
 local function init_crow_inputs()
@@ -327,7 +323,9 @@ local function init_params()
     update_quantization_bank()
   end)
   params:add_option("quantize_mode", "Quantize Mode", {"On Demand", "Continuous"}, 1)
-  params:set_action("quantize_mode", function(value) set_quantize_mode(value) end)
+  params:set_action("quantize_mode", function()
+    refresh_crow_outs(true)
+  end)
   params:add_trigger("quantize", "Quantize!")
   params:set_action("quantize", function() quantize() end)
   params:add_control("quantize_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate))
