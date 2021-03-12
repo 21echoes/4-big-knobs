@@ -17,10 +17,12 @@ local ControlSpec = require "controlspec"
 local Arcify = include("lib/arcify")
 local UIState = include('lib/ui_state')
 local Label = include("lib/label")
+local MidiOut = include("lib/midi_out")
 local tabutil = require "tabutil"
 
 local arc_device = arc.connect()
 local arcify = Arcify.new(arc_device, false)
+local midi_out = MidiOut.new()
 local NUM_CONTROLS = 4
 local MIN_VOLTS = -5
 local MAX_VOLTS = 10
@@ -98,6 +100,7 @@ local function ctrl_changed(ctrl, refresh_ui)
       crow.output[crow_out].volts = voltage
     end
   end
+  midi_out:message_for_ctrl_change(ctrl, voltage, get_quantized_voltage, continuous_quantization)
   if refresh_ui then
     UIState.set_dirty()
   end
@@ -348,6 +351,8 @@ local function init_params()
       params:set("snapshot_interpolation", snapshot)
     end)
   end
+
+  midi_out:init_params()
 
   params:add_option("show_instructions", "Show instructions?", {"No", "Yes"}, 2)
   params:add_option("is_shield", "Norns Shield?", {"No", "Yes"}, 1)
