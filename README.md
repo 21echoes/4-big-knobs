@@ -31,13 +31,17 @@ Send control voltages out of Crow. Intended for use with Arc, where each Arc enc
 
 ## Additional Parameters
 * Crow Outputs
-  * Slew time
-  * Minimum and Maximum voltage
+  * Minimum and Maximum voltage per output
+  * Slew time per output
   * Customize dial -> Crow output mapping
   * Direct control over dial values (can be used for MIDI mapping if you'd like a different control surface)
 * Crow Inputs
   * Each Crow input can exert influence over all the Crow outputs via Attenuation or Offset
   * Defaults to Offset
+* MIDI Out
+  * Each dial can send MIDI out, either as CCs or Notes
+  * Customize which MIDI device and channel is used
+  * Customize which CC# is sent, along with minimum and maximum CC values
 * Misc
   * If you have a Norns shield, you can switch top left and right text to match where your E1 is
   * You can turn off the helper text once you understand how it works

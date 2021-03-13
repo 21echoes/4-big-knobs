@@ -6,10 +6,12 @@
 --
 -- Snapshot mode,
 -- quantization mode,
+-- per-channel min, max, slew,
+-- MIDI out,
 -- and more options
 -- available in params menu
 --
--- v0.9.7 @21echoes
+-- v1.0.0 @21echoes
 
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
