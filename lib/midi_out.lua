@@ -23,6 +23,13 @@ local function param_name_for_ctrl(ctrl)
   return ctrl.."_volt"
 end
 
+function MidiOut:cleanup_ctrl(ctrl)
+  if self.devices[ctrl] ~= nil and self.prior_note_nums[ctrl] ~= nil then
+    local channel = params:get("midi_out_chan_"..ctrl)
+    self.devices[ctrl]:note_off(self.prior_note_nums[ctrl], 100, channel)
+  end
+end
+
 function MidiOut:refresh_ctrl(ctrl)
   if params:get("midi_out_mode_"..ctrl) ~= 1 then
     return
@@ -39,6 +46,7 @@ function MidiOut:init_params()
     params:add_option("midi_out_mode_"..ctrl, "Dial "..ctrl..": Mode", {"Off", "CC", "Notes"}, 1)
     params:add_number("midi_device_"..ctrl, "Dial "..ctrl..": Device", 1, 16, 1)
     params:set_action("midi_device_"..ctrl, function(value)
+      self:cleanup_ctrl(ctrl)
       self.devices[ctrl] = midi.connect(value)
       self:refresh_ctrl(ctrl)
     end)
@@ -95,6 +103,12 @@ function MidiOut:message_for_ctrl_change(ctrl, value, get_quantized_voltage, alr
         self.prior_note_nums[ctrl] = note_num
       end
     end
+  end
+end
+
+function MidiOut:cleanup()
+  for ctrl=1,NUM_CONTROLS do
+    self:cleanup_ctrl(ctrl)
   end
 end
 

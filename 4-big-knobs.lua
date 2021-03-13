@@ -597,10 +597,15 @@ end
 
 function cleanup()
   params:write()
-  metro.free(ui_refresh_metro.id)
-  ui_refresh_metro = nil
-  metro.free(reset_slew_metro.id)
-  reset_slew_metro = nil
+  midi_out:cleanup()
+  if ui_refresh_metro ~= nil then
+    metro.free(ui_refresh_metro.id)
+    ui_refresh_metro = nil
+  end
+  if reset_slew_metro ~= nil then
+    metro.free(reset_slew_metro.id)
+    reset_slew_metro = nil
+  end
 end
 
 function rerun()
