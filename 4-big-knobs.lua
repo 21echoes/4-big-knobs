@@ -413,9 +413,11 @@ end
 function update_bottom_text()
   local mode = params:get("mode")
   local show_instructions = params:get("show_instructions") == 2
+  local is_continuous_quantize = params:get("quantize_mode") == 2
+  corner_labels[3][1].text = ""
+  corner_labels[3][2].text = ""
+  corner_labels[4].text = ""
   if mode == 1 then
-    corner_labels[3][1].text = ""
-    corner_labels[3][2].text = ""
     if show_instructions then
       if dial_focus == 1 then
         corner_labels[4].text = "Dial 1 | Dial 2"
@@ -423,30 +425,31 @@ function update_bottom_text()
         corner_labels[4].text = "Dial 3 | Dial 4"
       end
     end
+    if is_continuous_quantize then
+      corner_labels[3][2].text = get_scale_name()
+    end
   elseif mode == 2 then
     if show_instructions then
       corner_labels[3][1].text = "K2: Snapshot 1"
       corner_labels[3][2].text = "K3: Snapshot 2"
     end
-    corner_labels[4].text = ""
+    if is_continuous_quantize then
+      corner_labels[4].text = get_scale_name()
+    end
   elseif mode == 3 then
     -- Quantize
-    local quantize_mode = params:get("quantize_mode")
-    if quantize_mode == 1 then
+    if is_continuous_quantize then
+      if show_instructions then
+        corner_labels[3][1].text = "K2: -> On-Demand"
+      else
+        corner_labels[3][1].text = "Continuous"
+      end
+    else
       if show_instructions then
         corner_labels[3][1].text = "K2: -> Continuous"
         corner_labels[3][2].text = "K3: Qnt!"
       else
         corner_labels[3][1].text = "On-Demand"
-        corner_labels[3][2].text = ""
-      end
-    else
-      if show_instructions then
-        corner_labels[3][1].text = "K2: -> On-Demand"
-        corner_labels[3][2].text = ""
-      else
-        corner_labels[3][1].text = "Continuous"
-        corner_labels[3][2].text = ""
       end
     end
     corner_labels[4].text = get_scale_name()
@@ -490,19 +493,19 @@ function redraw()
 
   -- Top right (top left if is_shield)
   if mode == 1 then
-    if is_arc_connected() and show_instructions then
+    if is_arc_connected() then
       corner_labels[2].text = "Arc Found"
     else
       corner_labels[2].text = ""
     end
   elseif mode == 2 then
-    if is_arc_connected() and show_instructions then
+    if is_arc_connected() then
       corner_labels[2].text = "Snapshot w/Arc"
     else
       corner_labels[2].text = "Snapshot"
     end
   elseif mode == 3 then
-    if is_arc_connected() and show_instructions then
+    if is_arc_connected() then
       corner_labels[2].text = "Quantize w/Arc"
     else
       corner_labels[2].text = "Quantize"
