@@ -59,6 +59,22 @@ local function param_name_for_ctrl(ctrl)
   return ctrl.."_volt"
 end
 
+local function min_and_max_for_ctrl(ctrl)
+  local min_and_max = {nil, nil}
+  for output=1,NUM_CONTROLS do
+    local ctrl_for_output = params:get("output_"..output)
+    if ctrl_for_output == ctrl then
+      local min = params:get("min_volts_"..output)
+      if min ~= nil and (min_and_max[0] == nil or min < min_and_max[0]) then min_and_max[0] = min end
+      local max = params:get("max_volts_"..output)
+      if max ~= nil and (min_and_max[1] == nil or max > min_and_max[1]) then min_and_max[1] = max end
+    end
+  end
+  if min_and_max[0] == nil then min_and_max[0] = -5 end
+  if min_and_max[1] == nil then min_and_max[1] = 5 end
+  return min_and_max
+end
+
 local function compute_voltage(ctrl)
   -- Default value
   local v = params:get(param_name_for_ctrl(ctrl))
@@ -81,7 +97,8 @@ local function compute_voltage(ctrl)
   end
 
   -- Min & Max
-  return util.clamp(v, params:get("min_volts"), params:get("max_volts"))
+  local min_and_max = min_and_max_for_ctrl(ctrl)
+  return util.clamp(v, min_and_max[0], min_and_max[1])
 end
 
 local function ctrl_changed(ctrl, refresh_ui)
@@ -115,11 +132,11 @@ local function refresh_crow_outs(refresh_ui)
   end
 end
 
-local function minmax_changed()
-  local faked_controlspec = ControlSpec.new(params:get("min_volts"), params:get("max_volts"), "lin", 0.01, 0)
-  for ctrl=1,NUM_CONTROLS do
-    arcify.params_[param_name_for_ctrl(ctrl)].controlspec = faked_controlspec
-  end
+local function minmax_changed(output)
+  local ctrl = params:get("output_"..output)
+  local min_and_max = min_and_max_for_ctrl(ctrl)
+  local faked_controlspec = ControlSpec.new(min_and_max[0], min_and_max[1], "lin", 0.01, 0)
+  arcify.params_[param_name_for_ctrl(ctrl)].controlspec = faked_controlspec
   refresh_crow_outs(true)
 end
 
@@ -169,9 +186,13 @@ function get_quantized_voltage(volts)
   return quantization_bank[bank_index]
 end
 
-local function set_output_slew(slew)
-  for crow_output=1,NUM_CONTROLS do
-    crow.output[crow_output].slew = slew
+local function set_output_slew(output, slew)
+  crow.output[output].slew = slew
+end
+
+local function set_all_output_slews()
+  for output=1,NUM_CONTROLS do
+    set_output_slew(output, params:get("output_slew_"..output))
   end
 end
 
@@ -182,9 +203,11 @@ function quantize()
       metro.free(reset_slew_metro.id)
       reset_slew_metro = nil
     end
-    set_output_slew(params:get("quantize_slew"))
+    for ctrl=1,NUM_CONTROLS do
+      set_output_slew(ctrl, params:get("quantize_slew"))
+    end
     reset_slew_metro = metro.init(function()
-      set_output_slew(params:get("output_slew"))
+      set_all_output_slews()
       metro.free(reset_slew_metro.id)
       reset_slew_metro = nil
     end)
@@ -211,7 +234,6 @@ local function init_crow_inputs()
     end
     crow.input[crow_input].mode("stream", crow_refresh_rate)
   end
-  set_output_slew(params:get("output_slew"))
 end
 
 local function capture_snapshot(snapshot)
@@ -270,47 +292,51 @@ local function init_params()
 
   params:add_option("mode", "Mode", {"Norns Control", "Snapshot", "Quantize"}, is_arc_connected() and 2 or 1)
 
-  params:add_group("Crow Outputs", 11)
-  params:add_control("output_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate))
-  params:set_action("output_slew", function(value) set_output_slew(value) end)
-  params:add_control("min_volts", "Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS))
-  params:set_action("min_volts", function(value)
-    if params:get("max_volts") < value + MIN_SEPARATION then
-      params:set("max_volts", value + MIN_SEPARATION)
-    end
-    minmax_changed()
-  end)
-  params:add_control("max_volts", "Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, 5))
-  params:set_action("max_volts", function(value)
-    if params:get("min_volts") > value - MIN_SEPARATION then
-      params:set("min_volts", value - MIN_SEPARATION)
-    end
-    minmax_changed()
-  end)
-  for ctrl=1,NUM_CONTROLS do
-    params:add_option("output_"..ctrl, "Output "..ctrl.. " mapping", {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, ctrl)
-    params:set_action("output_"..ctrl, function()
-      refresh_crow_outs(false)
+  params:add_group("Crow Outputs", (6*NUM_CONTROLS))
+  for output=1,NUM_CONTROLS do
+    params:add_control("min_volts_"..output, "Output "..output..": Min Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, MIN_VOLTS, 'V'))
+    params:set_action("min_volts_"..output, function(value)
+      if params:get("max_volts_"..output) < value + MIN_SEPARATION then
+        params:set("max_volts_"..output, value + MIN_SEPARATION)
+      end
+      minmax_changed(output)
     end)
+    params:add_control("max_volts_"..output, "Output "..output..": Max Volts", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", MIN_SEPARATION, 5, 'V'))
+    params:set_action("max_volts_"..output, function(value)
+      if params:get("min_volts_"..output) > value - MIN_SEPARATION then
+        params:set("min_volts_"..output, value - MIN_SEPARATION)
+      end
+      minmax_changed(output)
+    end)
+    params:add_control("output_slew_"..output, "Output "..output..": Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate, 's'))
+    params:set_action("output_slew_"..output, function(value)
+      set_output_slew(output, value)
+    end)
+    params:add_option("output_"..output, "Output "..output.. ": Mapping", {"Dial 1", "Dial 2", "Dial 3", "Dial 4"}, output)
+    params:set_action("output_"..output, function()
+      refresh_crow_outs(true)
+    end)
+    params:add_separator()
   end
   for ctrl=1,NUM_CONTROLS do
-    params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.002, 0))
+    params:add_control(param_name_for_ctrl(ctrl), "Dial "..ctrl..": Voltage", ControlSpec.new(MIN_VOLTS, MAX_VOLTS, "lin", 0.002, 0, 'V'))
     params:set_action(param_name_for_ctrl(ctrl), function(value)
       ctrl_changed(ctrl, true)
-      params:set(param_name_for_ctrl(ctrl), util.clamp(value, params:get("min_volts"), params:get("max_volts")))
+      local min_and_max = min_and_max_for_ctrl(ctrl)
+      params:set(param_name_for_ctrl(ctrl), util.clamp(value, min_and_max[0], min_and_max[1]))
     end)
     arcify:register(param_name_for_ctrl(ctrl))
   end
 
   params:add_group("Crow Inputs", #crow_input_values*2)
   for crow_in=1,#crow_input_values do
-    params:add_option("input_"..crow_in, "Input Function", {"None", "Offset", "Attenuate"}, 1)
+    params:add_option("input_"..crow_in, "Input "..crow_in..": Function", {"None", "Offset", "Attenuate"}, 1)
     params:set_action("input_"..crow_in, function()
       refresh_crow_outs(false)
     end)
   end
   for crow_in=1,#crow_input_values do
-    params:add_number("input_"..crow_in.."_atten", "Input "..crow_in.." Atten Range", 1, 10, 5)
+    params:add_number("input_"..crow_in.."_atten", "Input "..crow_in..": Atten Range", 1, 10, 5)
     params:set_action("input_"..crow_in.."_atten", function()
       refresh_crow_outs(false)
     end)
@@ -331,12 +357,13 @@ local function init_params()
   end)
   params:add_trigger("quantize", "Quantize!")
   params:set_action("quantize", function() quantize() end)
-  params:add_control("quantize_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate))
+  params:add_control("quantize_slew", "Slew", ControlSpec.new(crow_refresh_rate, 10, "exp", 0, crow_refresh_rate, 's'))
 
-  params:add_group("Snapshots", 1+(2*(NUM_CONTROLS+1)))
+  params:add_group("Snapshots", 1+(2*(NUM_CONTROLS+2)))
   params:add_control("snapshot_interpolation", "Snapshot interpolation", ControlSpec.new(1, 2, "lin", 0.01, 1))
   params:set_action("snapshot_interpolation", function(value) set_snapshot_interpolation(value) end)
   for snapshot=1,2 do
+    params:add_separator()
     for ctrl=1,NUM_CONTROLS do
       params:add_control(
         "snapshot_"..snapshot.."_"..ctrl,
@@ -433,10 +460,10 @@ function redraw()
   screen.stroke()
   screen.clear()
   local mode = params:get("mode")
-  local is_quantize_mode = mode == 3
   for ctrl=1,#dials do
-    dials[ctrl].min_value = params:get("min_volts")
-    dials[ctrl].max_value = params:get("max_volts")
+    local min_and_max = min_and_max_for_ctrl(ctrl)
+    dials[ctrl].min_value = min_and_max[0]
+    dials[ctrl].max_value = min_and_max[1]
     dials[ctrl]:set_value(params:get(param_name_for_ctrl(ctrl)))
     dials[ctrl].active = mode ~= 1 or (dial_focus == 1 and ctrl < 3) or (dial_focus == 2 and ctrl >= 3)
     if mode == 1 then
