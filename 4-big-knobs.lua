@@ -16,10 +16,10 @@
 local UI = require 'ui'
 local MusicUtil = require "musicutil"
 local ControlSpec = require "controlspec"
-local Arcify = include("lib/arcify")
-local UIState = include('lib/ui_state')
-local Label = include("lib/label")
-local MidiOut = include("lib/midi_out")
+local Arcify = require("4-big-knobs/lib/arcify")
+local UIState = require('4-big-knobs/lib/ui_state')
+local Label = require("4-big-knobs/lib/label")
+local MidiOut = require("4-big-knobs/lib/midi_out")
 local tabutil = require "tabutil"
 
 local arc_device = arc.connect()
