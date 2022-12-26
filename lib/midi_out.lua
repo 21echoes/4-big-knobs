@@ -19,7 +19,7 @@ function MidiOut.new(i)
   return i
 end
 
-local function param_name_for_ctrl(ctrl)
+function MidiOut:_param_name_for_ctrl(ctrl)
   return ctrl.."_volt"
 end
 
@@ -34,7 +34,7 @@ function MidiOut:refresh_ctrl(ctrl)
   if params:get("midi_out_mode_"..ctrl) ~= 1 then
     return
   end
-  self:message_for_ctrl_change(ctrl, param_name_for_ctrl(ctrl.."_volt"))
+  self:message_for_ctrl_change(ctrl, self:_param_name_for_ctrl(ctrl.."_volt"))
 end
 
 function MidiOut:init_params()
