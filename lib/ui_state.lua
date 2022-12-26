@@ -2,6 +2,11 @@
 -- written to track dirty states of UI, provide a generic refresh function
 -- written to not be directly dependent on norns global variables
 
+-- Make sure there's only one copy
+if _4BigKnobsUI ~= nil then
+  return _4BigKnobsUI
+end
+
 local UI = {}
 
 -- refresh logic
